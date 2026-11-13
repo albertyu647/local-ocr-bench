@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OCR comparison</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #fff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e3e1db;
+    --good: #1f7a4d; --good-bg: #e3f3ea; --mid: #8a5a00; --mid-bg: #fbf0d9; --bad: #a3262a; --bad-bg: #fbe5e4;
+    --accent: #2b59c3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+  header { position: sticky; top: 0; z-index: 10; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .row + .row { margin-top: 8px; }
+  h1 { font-size: 15px; margin: 0 12px 0 0; }
+  .lbl { color: var(--muted); font-size: 12px; margin-right: 4px; }
+  button.chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 13px; cursor: pointer; color: var(--ink); }
+  button.chip:hover { border-color: #bdbab2; }
+  button.chip[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  button.chip .k { font-size: 11px; opacity: .7; margin-left: 4px; }
+  button.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .hint { margin-left: auto; color: var(--muted); font-size: 12px; }
+
+  main { display: grid; grid-template-columns: minmax(320px, 36%) 1fr; gap: 16px; padding: 16px; align-items: start; }
+  .scan { position: sticky; top: 104px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: calc(100vh - 120px); overflow: auto; }
+  .scan h2, .card h3 { font-size: 13px; margin: 0 0 8px; }
+  .scanwrap { position: relative; }
+  .scanwrap img { width: 100%; display: block; border: 1px solid var(--line); }
+  .hl { position: absolute; border: 2px solid var(--accent); background: rgba(43,89,195,.12); pointer-events: none; display: none; }
+  .labels { margin-top: 10px; font-size: 12px; color: var(--muted); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; min-width: 0; }
+  .card.ref { border-style: dashed; }
+  .cardhead { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .badges { display: flex; flex-wrap: wrap; gap: 4px; }
+  .b { font-size: 12px; padding: 1px 7px; border-radius: 4px; background: #f0efea; color: var(--muted); white-space: nowrap; }
+  .b.good { background: var(--good-bg); color: var(--good); }
+  .b.mid { background: var(--mid-bg); color: var(--mid); }
+  .b.bad { background: var(--bad-bg); color: var(--bad); }
+  .missed { margin-top: 6px; font-size: 12px; color: var(--bad); }
+  .missed span { display: inline-block; background: var(--bad-bg); border-radius: 4px; padding: 0 5px; margin: 2px 3px 0 0; }
+  .body { padding: 10px 12px; overflow: auto; max-height: 72vh; }
+  .body pre { white-space: pre-wrap; word-break: break-word; font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; }
+  .body table { border-collapse: collapse; font-size: 12.5px; margin: 6px 0; }
+  .body td, .body th { border: 1px solid var(--line); padding: 3px 6px; vertical-align: top; }
+  .body img { max-width: 100%; border: 1px solid var(--line); }
+  .body h1, .body h2, .body h3, .body h4 { font-size: 14px; margin: 10px 0 4px; }
+  .body p { margin: 0 0 8px; }
+  .crop { width: 100%; background-repeat: no-repeat; border: 1px dashed #b9b6ad; border-radius: 4px; margin: 6px 0 2px; cursor: crosshair; }
+  .note { font-size: 12px; color: var(--muted); font-style: italic; margin-bottom: 8px; }
+  .caption { font-size: 12.5px; background: #f3f6fd; border-left: 3px solid var(--accent); padding: 6px 8px; margin: 4px 0 8px; }
+  .mer { border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin: 4px 0 8px; background: #fcfcfa; }
+  .mer .tag { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .mer svg { max-width: 100%; height: auto; }
+  .empty { color: var(--bad); font-style: italic; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } .scan { position: static; max-height: none; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <h1>OCR comparison: test pages vs every model</h1>
+    <span class="lbl">View</span>
+    <button class="chip" id="vRendered" aria-pressed="true">Rendered</button>
+    <button class="chip" id="vRaw" aria-pressed="false">Raw output</button>
+    <span class="hint">← → change page · hover a dashed box to see where it is on the scan</span>
+  </div>
+  <div class="row" id="pageTabs"><span class="lbl">Page</span></div>
+  <div class="row" id="modelTabs"><span class="lbl">Show</span></div>
+</header>
+<main>
+  <section class="scan">
+    <h2 id="scanTitle"></h2>
+    <div class="scanwrap"><img id="scanImg" alt="Original scanned page"><div class="hl" id="hl"></div></div>
+    <div class="labels" id="labels"></div>
+  </section>
+  <section class="cards" id="cards"></section>
+</main>
+<script>
+const DATA = /*DATA*/null;
+const state = { page: 0, raw: false, hidden: new Set(), showRef: false };
+const $ = id => document.getElementById(id);
+const esc = s => (s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+if (window.mermaid) mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "neutral" });
+
+function grade(v, kind) {
+  if (v == null) return "";
+  if (kind === "cer") return v <= 0.05 ? "good" : v <= 0.15 ? "mid" : "bad";
+  return v >= 0.9 ? "good" : v >= 0.6 ? "mid" : "bad";
+}
+const pct = v => Math.round(v * 100) + "%";
+
+function buildTabs() {
+  DATA.pages.forEach((p, i) => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.innerHTML = `${p.num}<span class="k">${p.diagram ? "diagram" : "text"}</span>`;
+    b.onclick = () => { state.page = i; draw(); };
+    $("pageTabs").appendChild(b);
+  });
+  const ref = document.createElement("button");
+  ref.className = "chip"; ref.textContent = "Reference text"; ref.setAttribute("aria-pressed", "false");
+  ref.onclick = () => { state.showRef = !state.showRef; draw(); };
+  $("modelTabs").appendChild(ref);
+  DATA.models.forEach(m => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.textContent = m.name; b.dataset.run = m.run;
+    b.onclick = () => { state.hidden.has(m.run) ? state.hidden.delete(m.run) : state.hidden.add(m.run); draw(); };
+    $("modelTabs").appendChild(b);
+  });
+  $("vRendered").onclick = () => { state.raw = false; draw(); };
+  $("vRaw").onclick = () => { state.raw = true; draw(); };
+  document.addEventListener("keydown", e => {
+    if (e.key === "ArrowRight") { state.page = Math.min(DATA.pages.length - 1, state.page + 1); draw(); }
+    if (e.key === "ArrowLeft") { state.page = Math.max(0, state.page - 1); draw(); }
+  });
+}
+
+function renderBlocks(blocks) {
+  return blocks.map(b => {
+    if (b.t === "pre") return `<pre>${esc(b.v)}</pre>`;
+    if (b.t === "html") return b.v;
+    if (b.t === "mermaid") return `<div class="mer"><div class="tag">Mermaid diagram written by the model</div><div class="mermaid-src" data-code="${esc(b.v)}"><pre>${esc(b.v)}</pre></div></div>`;
+    return window.marked ? marked.parse(b.v) : `<pre>${esc(b.v)}</pre>`;
+  }).join("");
+}
+
+function card(m, o, page) {
+  const badges = [];
+  badges.push(`<span class="b">${o.sec != null ? o.sec.toFixed(1) + " s" : (m.sec ? "~" + m.sec + " s avg" : "")}</span>`);
+  if (o.cer != null) badges.push(`<span class="b ${grade(o.cer, "cer")}">char error ${o.cer.toFixed(3)}</span>`);
+  if (o.f1 != null) badges.push(`<span class="b ${grade(o.f1)}">word F1 ${o.f1.toFixed(3)}</span>`);
+  if (o.recall != null) badges.push(`<span class="b ${grade(o.recall)}">diagram labels ${pct(o.recall)}</span>`);
+  const missed = o.missed && o.missed.length ? `<div class="missed">Missed: ${o.missed.map(l => `<span>${esc(l)}</span>`).join("")}</div>` : "";
+  const body = !o.raw.trim() ? `<div class="empty">No output</div>` : state.raw ? `<pre>${esc(o.raw)}</pre>` : renderBlocks(o.blocks);
+  return `<article class="card"><div class="cardhead"><h3>${esc(m.name)}</h3><div class="badges">${badges.join("")}</div>${missed}</div><div class="body">${body}</div></article>`;
+}
+
+async function draw() {
+  const p = DATA.pages[state.page];
+  [...$("pageTabs").querySelectorAll("button")].forEach((b, i) => b.setAttribute("aria-pressed", i === state.page));
+  [...$("modelTabs").querySelectorAll("button")].forEach(b => {
+    b.setAttribute("aria-pressed", b.dataset.run ? !state.hidden.has(b.dataset.run) : state.showRef);
+  });
+  $("vRendered").setAttribute("aria-pressed", !state.raw); $("vRaw").setAttribute("aria-pressed", state.raw);
+  $("scanTitle").textContent = `Original: page ${p.num} (${p.diagram ? "has diagram/table/form" : "plain text"})`;
+  $("scanImg").src = `pages/${p.id}.png`;
+  $("hl").style.display = "none";
+  $("labels").innerHTML = p.labels.length ? `<b>Labels inside the figure (answer key):</b> ${p.labels.map(esc).join(" · ")}` : "";
+
+  let html = "";
+  if (state.showRef) html += `<article class="card ref"><div class="cardhead"><h3>Reference text (hand-checked answer key)</h3></div><div class="body"><pre>${esc(p.gt)}</pre></div></article>`;
+  DATA.models.forEach(m => { if (!state.hidden.has(m.run)) html += card(m, p.outputs[m.run], p); });
+  $("cards").innerHTML = html;
+
+  document.querySelectorAll(".crop").forEach(el => {
+    const [x1, y1, x2, y2] = el.dataset.bbox.split(",").map(v => +v / 1000);
+    const w = Math.max(0.01, x2 - x1), h = Math.max(0.01, y2 - y1);
+    el.style.backgroundImage = `url(pages/${p.id}.png)`;
+    el.style.backgroundSize = `${100 / w}% auto`;
+    el.style.backgroundPosition = `${w < 1 ? x1 / (1 - w) * 100 : 0}% ${h < 1 ? y1 / (1 - h) * 100 : 0}%`;
+    el.style.aspectRatio = `${w * p.w} / ${h * p.h}`;
+    el.style.maxWidth = `${Math.min(100, w * 160)}%`;
+    el.onmouseenter = () => Object.assign($("hl").style, { display: "block", left: x1 * 100 + "%", top: y1 * 100 + "%", width: w * 100 + "%", height: h * 100 + "%" });
+    el.onmouseleave = () => { $("hl").style.display = "none"; };
+  });
+
+  if (window.mermaid) {
+    let n = 0;
+    for (const el of document.querySelectorAll(".mermaid-src")) {
+      try {
+        const { svg } = await mermaid.render(`mer${state.page}_${n++}`, el.dataset.code);
+        el.innerHTML = svg + `<details><summary class="note">Mermaid code</summary><pre>${esc(el.dataset.code)}</pre></details>`;
+      } catch (e) {
+        el.insertAdjacentHTML("afterbegin", `<div class="note">Mermaid code didn't render (syntax error), so here it is as text:</div>`);
+        document.querySelectorAll("[id^='dmer']").forEach(x => x.remove());
+      }
+    }
+  }
+}
+
+buildTabs();
+draw();
+</script>
+</body>
+</html>

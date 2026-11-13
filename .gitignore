@@ -1,0 +1,11 @@
+# your own data and weights, never committed
+pages/
+ref/
+models/
+out/
+envs/
+work/
+*.pdf
+__pycache__/
+.DS_Store
+.env*
